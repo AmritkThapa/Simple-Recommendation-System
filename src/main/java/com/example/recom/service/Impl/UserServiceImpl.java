@@ -6,6 +6,8 @@ import com.example.recom.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
@@ -14,5 +16,10 @@ public class UserServiceImpl implements UserService {
     public User uploadUser(User user) {
         return userRepo.save(user);
 
+    }
+
+    @Override
+    public List<User> uploadUsers(List<User> user) {
+        return userRepo.saveAll(user);
     }
 }
