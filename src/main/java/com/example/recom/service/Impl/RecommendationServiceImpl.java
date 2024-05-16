@@ -1,61 +1,89 @@
 package com.example.recom.service.Impl;
 
+import com.example.recom.entity.Item;
 import com.example.recom.entity.UserItem;
+import com.example.recom.recommender.CosineSimilarity;
+import com.example.recom.repo.ItemRepo;
 import com.example.recom.repo.UserItemRepo;
 import com.example.recom.service.RecommendationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class RecommendationServiceImpl implements RecommendationService {
 
     public final UserItemRepo userItemRepo;
+    public final ItemRepo itemRepository;
 
     @Override
-    public List<UserItem> recommendItemsForUser(String userId) {
+    public List<Item> recommendItems(Long userId, int numRecommendations) {
+        // Step 1: Get all item IDs
+        List<Long> allItemIds = getAllItemIds();
+        int itemCount = allItemIds.size();
 
-        // Fetch items for the user from the database
-        List<UserItem> userItems = userItemRepo.findAll();
+        // Step 2: Create user vectors with binary values (interaction/no interaction)
+        Map<Long, double[]> userVectors = new HashMap<>();
+        List<Long> allUserIds = userItemRepo.findAllUserIds();
 
-        //User-Item matrix
-        Map<Long, Set<Long>> userItemMatrix = new HashMap<>();
-        for (UserItem userItem : userItems) {
-            userItemMatrix.computeIfAbsent(userItem.getUser().getId(), k -> new HashSet<>()).add(userItem.getItem().getId());
+        for (Long uid : allUserIds) {
+            double[] vector = new double[itemCount];
+            Arrays.fill(vector, 0);
+            List<UserItem> userItems = userItemRepo.findByUserId(uid);
+            for (UserItem ui : userItems) {
+                int index = allItemIds.indexOf(ui.getItem().getId());
+                vector[index] = 1; // Mark as interacted
+            }
+            userVectors.put(uid, vector);
         }
 
-        // Calculate cosine similarities
-        Map<Long, Double> userSimilarities = new HashMap<>();
-        Set<Long> targetUserItems = userItemMatrix.get(userId);
+        // Step 3: Calculate cosine similarity with other users
+        double[] targetUserVector = userVectors.get(userId);
+        Map<Long, Double> similarityScores = new HashMap<>();
 
-        // If targetUserItems is null, return an empty list of recommendations
-        if (targetUserItems == null) {
-            return new ArrayList<>();
+        for (Map.Entry<Long, double[]> entry : userVectors.entrySet()) {
+            Long uid = entry.getKey();
+            if (!uid.equals(userId)) {
+                double similarity = CosineSimilarity.calculate(targetUserVector, entry.getValue());
+                similarityScores.put(uid, similarity);
+            }
         }
 
-        for (Map.Entry<Long, Set<Long>> entry : userItemMatrix.entrySet()) {
-            Long otherUserId = entry.getKey();
-            Set<Long> otherUserItems = entry.getValue();
+        // Step 4: Find the most similar users
+        List<Long> similarUserIds = similarityScores.entrySet().stream()
+                .sorted(Map.Entry.<Long, Double>comparingByValue().reversed())
+                .limit(numRecommendations)
+                .map(Map.Entry::getKey)
+                .toList();
 
-            int intersection = (int) targetUserItems.stream().filter(otherUserItems::contains).count();
-            double similarity = intersection / (Math.sqrt(targetUserItems.size()) * Math.sqrt(otherUserItems.size()));
-            userSimilarities.put(otherUserId, similarity);
+        // Step 5: Recommend items that similar users interacted with but the target user hasn't
+        Set<Long> targetUserItemIds = userItemRepo.findByUserId(userId).stream()
+                .map(userItem -> userItem.getItem().getId())
+                .collect(Collectors.toSet());
+
+        List<Long> recommendedItemIds = new ArrayList<>();
+        for (Long similarUserId : similarUserIds) {
+            List<UserItem> similarUserItems = userItemRepo.findByUserId(similarUserId);
+            for (UserItem userItem : similarUserItems) {
+                if (!targetUserItemIds.contains(userItem.getItem().getId())) {
+                    recommendedItemIds.add(userItem.getItem().getId());
+                }
+            }
         }
 
-        // Generate recommendations
-        List<UserItem> recommendations = new ArrayList<>();
-        userSimilarities.entrySet().stream()
-                .sorted(Map.Entry.comparingByValue(Collections.reverseOrder()))
-                .limit(5)
-                .forEach(entry -> {
-                    Long similarUserId = entry.getKey();
-                    userItems.stream()
-                            .filter(userItem -> userItem.getUser().getId().equals(similarUserId) && !targetUserItems.contains(userItem.getItem().getId()))
-                            .forEach(recommendations::add);
-                });
+        // Step 6: Randomize and limit the recommended items
+        Collections.shuffle(recommendedItemIds);
+        List<Long> randomizedRecommendedItemIds = recommendedItemIds.stream().limit(numRecommendations).collect(Collectors.toList());
 
-        return recommendations;
+        // Step 7: Fetch the recommended items from the repository
+        return new ArrayList<>(itemRepository.findAllById(randomizedRecommendedItemIds));
     }
+
+    public List<Long> getAllItemIds() {
+        return itemRepository.findAll().stream().map(Item::getId).collect(Collectors.toList());
+    }
+
 }

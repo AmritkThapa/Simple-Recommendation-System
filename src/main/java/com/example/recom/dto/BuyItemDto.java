@@ -9,6 +9,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class BuyItemDto {
-    private String userId;
-    private String itemId;
+    private Long userId;
+    private Long itemId;
 }

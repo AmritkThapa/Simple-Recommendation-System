@@ -6,5 +6,6 @@ import com.example.recom.entity.UserItem;
 import java.util.List;
 
 public interface RecommendationService {
-    List<UserItem> recommendItemsForUser(String userId);
+
+    List<Item> recommendItems(Long userId, int numRecommendations);
 }
