@@ -23,4 +23,8 @@ public class Item {
     @Column(name = "category", length = 50)
     private String category;
 
+    public Item(Long id) {
+        this.id = id;
+    }
+
 }
