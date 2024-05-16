@@ -1,6 +1,6 @@
 package com.example.recom.controller;
 
-import com.example.recom.entity.Item;
+import com.example.recom.entity.UserItem;
 import com.example.recom.service.RecommendationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,7 +17,7 @@ public class RecommendController {
     private final RecommendationService recommendationService;
 
     @GetMapping("/user/{userId}")
-    public List<Item> recommendItemsForUser(@PathVariable String userId) {
+    public List<UserItem> recommendItemsForUser(@PathVariable String userId) {
         // Call service method to get recommendations for the user
         return recommendationService.recommendItemsForUser(userId);
     }

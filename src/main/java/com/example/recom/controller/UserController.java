@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequiredArgsConstructor
 public class UserController {
@@ -16,5 +18,11 @@ public class UserController {
         // Save the user to the database
         userService.uploadUser(user);
         return user;
+    }
+
+    @PostMapping("/users")
+    private List<User> uploadUsers(@RequestBody List<User> user) {
+        // Save the user to the database
+        return userService.uploadUsers(user);
     }
 }
