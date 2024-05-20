@@ -41,6 +41,7 @@ public class BuyItemServiceImpl implements BuyItemService {
         UserItem userItem = new UserItem();
         userItem.setUser(user);
         userItem.setItem(item);
+        userItem.setPurchased(true);
         userItemRepo.save(userItem);
     }
 }

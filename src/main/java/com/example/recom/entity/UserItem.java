@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+
 @Entity
 @Table(name = "user_items")
 @Data
@@ -22,4 +23,9 @@ public class UserItem {
     @ManyToOne
     @JoinColumn(name = "item_id")
     private Item item;
+
+//    @Column(name = "interaction_timestamp", nullable = false, updatable = false, insertable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+//    private Timestamp interactionTimestamp;
+
+    private boolean isPurchased;
 }
