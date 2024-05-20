@@ -1,10 +1,12 @@
 package com.example.recom.service.Impl;
 
 import com.example.recom.entity.Item;
+import com.example.recom.entity.User;
 import com.example.recom.entity.UserItem;
 import com.example.recom.recommender.CosineSimilarity;
 import com.example.recom.repo.ItemRepo;
 import com.example.recom.repo.UserItemRepo;
+import com.example.recom.repo.UserRepo;
 import com.example.recom.service.RecommendationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -16,74 +18,95 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RecommendationServiceImpl implements RecommendationService {
 
-    public final UserItemRepo userItemRepo;
+    public final UserItemRepo userItemRepository;
     public final ItemRepo itemRepository;
+    public final UserRepo userRepository;
 
     @Override
     public List<Item> recommendItems(Long userId, int numRecommendations) {
-        // Step 1: Get all item IDs
-        List<Long> allItemIds = getAllItemIds();
-        int itemCount = allItemIds.size();
 
-        // Step 2: Create user vectors with binary values (interaction/no interaction)
-        Map<Long, double[]> userVectors = new HashMap<>();
-        List<Long> allUserIds = userItemRepo.findAllUserIds();
+        User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
 
-        for (Long uid : allUserIds) {
-            double[] vector = new double[itemCount];
-            Arrays.fill(vector, 0);
-            List<UserItem> userItems = userItemRepo.findByUserId(uid);
-            for (UserItem ui : userItems) {
-                int index = allItemIds.indexOf(ui.getItem().getId());
-                vector[index] = 1; // Mark as interacted
-            }
-            userVectors.put(uid, vector);
+        // Get all items
+        List<Item> allItems = itemRepository.findAll();
+
+        // Calculate similarity scores
+        Map<Item, Double> similarityScores = new HashMap<>();
+        for (Item item : allItems) {
+            double similarityScore = calculateSimilarity(user, item);
+            similarityScores.put(item, similarityScore);
         }
 
-        // Step 3: Calculate cosine similarity with other users
-        double[] targetUserVector = userVectors.get(userId);
-        Map<Long, Double> similarityScores = new HashMap<>();
-
-        for (Map.Entry<Long, double[]> entry : userVectors.entrySet()) {
-            Long uid = entry.getKey();
-            if (!uid.equals(userId)) {
-                double similarity = CosineSimilarity.calculate(targetUserVector, entry.getValue());
-                similarityScores.put(uid, similarity);
-            }
-        }
-
-        // Step 4: Find the most similar users
-        List<Long> similarUserIds = similarityScores.entrySet().stream()
-                .sorted(Map.Entry.<Long, Double>comparingByValue().reversed())
-                .limit(numRecommendations)
+        // Sort items by similarity score
+        List<Item> sortedItems = similarityScores.entrySet().stream()
+                .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
                 .map(Map.Entry::getKey)
-                .toList();
+                .collect(Collectors.toList());
 
-        // Step 5: Recommend items that similar users interacted with but the target user hasn't
-        Set<Long> targetUserItemIds = userItemRepo.findByUserId(userId).stream()
-                .map(userItem -> userItem.getItem().getId())
-                .collect(Collectors.toSet());
+        // Limit the number of recommendations
+        return sortedItems.stream().limit(numRecommendations).collect(Collectors.toList());
+    }
 
-        List<Long> recommendedItemIds = new ArrayList<>();
-        for (Long similarUserId : similarUserIds) {
-            List<UserItem> similarUserItems = userItemRepo.findByUserId(similarUserId);
-            for (UserItem userItem : similarUserItems) {
-                if (!targetUserItemIds.contains(userItem.getItem().getId())) {
-                    recommendedItemIds.add(userItem.getItem().getId());
-                }
-            }
+    private double calculateSimilarity(User user, Item item) {
+        // Get user-item interactions
+        List<UserItem> userItems = userItemRepository.findByUser(user);
+
+        // Calculate content-based similarity (e.g., using cosine similarity)
+        double[] vectorA = getUserVector(user, userItems); // Vector representation of the user
+        double[] vectorB = getItemVector(item); // Vector representation of the item
+        double contentBasedSimilarity = CosineSimilarity.calculate(vectorA, vectorB);
+
+        // Calculate collaborative filtering similarity
+        double collaborativeFilteringScore = calculateCollaborativeFilteringScore(user, item, userItems);
+
+        // Combine the scores (e.g., using a weighted average)
+        return contentBasedSimilarity * 0.5 + collaborativeFilteringScore * 0.5;
+    }
+
+    private double[] getUserVector(User user, List<UserItem> userItems) {
+        // Get all unique items in the system
+        List<Item> allItems = itemRepository.findAll();
+
+        // Create a map where each key is an item and the value is the number of times the user has interacted with that item
+        Map<Item, Long> itemCountMap = userItems.stream()
+                .collect(Collectors.groupingBy(UserItem::getItem, Collectors.counting()));
+
+        // Create a vector where each element represents a unique item
+        double[] userVector = new double[allItems.size()];
+        for (int i = 0; i < allItems.size(); i++) {
+            Item item = allItems.get(i);
+            userVector[i] = itemCountMap.getOrDefault(item, 0L);
         }
 
-        // Step 6: Randomize and limit the recommended items
-        Collections.shuffle(recommendedItemIds);
-        List<Long> randomizedRecommendedItemIds = recommendedItemIds.stream().limit(numRecommendations).collect(Collectors.toList());
-
-        // Step 7: Fetch the recommended items from the repository
-        return new ArrayList<>(itemRepository.findAllById(randomizedRecommendedItemIds));
+        return userVector;
     }
 
-    public List<Long> getAllItemIds() {
-        return itemRepository.findAll().stream().map(Item::getId).collect(Collectors.toList());
+    private double[] getItemVector(Item item) {
+        // Get all unique users in the system
+        List<User> allUsers = userRepository.findAll();
+
+        // Create a map where each key is a user and the value is the number of times the user has interacted with the item
+        Map<User, Long> userCountMap = userItemRepository.findByItem(item).stream()
+                .collect(Collectors.groupingBy(UserItem::getUser, Collectors.counting()));
+
+        // Create a vector where each element represents a unique user
+        double[] itemVector = new double[allUsers.size()];
+        for (int i = 0; i < allUsers.size(); i++) {
+            User user = allUsers.get(i);
+            itemVector[i] = userCountMap.getOrDefault(user, 0L);
+        }
+
+        return itemVector;
     }
 
+    private double calculateCollaborativeFilteringScore(User user, Item item, List<UserItem> userItems) {
+        // Calculate the score based on user-item interactions
+        double score = 0.0;
+        for (UserItem userItem : userItems) {
+            if (userItem.getItem().equals(item)) {
+                score += userItem.isPurchased() ? 0.5 : 1.0;
+            }
+        }
+        return score;
+    }
 }
