@@ -41,7 +41,7 @@ public class RecommendationServiceImpl implements RecommendationService {
         List<Item> sortedItems = similarityScores.entrySet().stream()
                 .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
                 .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
+                .toList();
 
         // Limit the number of recommendations
         return sortedItems.stream().limit(numRecommendations).collect(Collectors.toList());
@@ -51,19 +51,19 @@ public class RecommendationServiceImpl implements RecommendationService {
         // Get user-item interactions
         List<UserItem> userItems = userItemRepository.findByUser(user);
 
-        // Calculate content-based similarity (e.g., using cosine similarity)
-        double[] vectorA = getUserVector(user, userItems); // Vector representation of the user
+        // Calculate content-based similarity
+        double[] vectorA = getUserVector(userItems); // Vector representation of the user
         double[] vectorB = getItemVector(item); // Vector representation of the item
         double contentBasedSimilarity = CosineSimilarity.calculate(vectorA, vectorB);
 
         // Calculate collaborative filtering similarity
-        double collaborativeFilteringScore = calculateCollaborativeFilteringScore(user, item, userItems);
+        double collaborativeFilteringScore = calculateCollaborativeFilteringScore(item, userItems);
 
         // Combine the scores (e.g., using a weighted average)
         return contentBasedSimilarity * 0.5 + collaborativeFilteringScore * 0.5;
     }
 
-    private double[] getUserVector(User user, List<UserItem> userItems) {
+    private double[] getUserVector(List<UserItem> userItems) {
         // Get all unique items in the system
         List<Item> allItems = itemRepository.findAll();
 
@@ -99,7 +99,7 @@ public class RecommendationServiceImpl implements RecommendationService {
         return itemVector;
     }
 
-    private double calculateCollaborativeFilteringScore(User user, Item item, List<UserItem> userItems) {
+    private double calculateCollaborativeFilteringScore(Item item, List<UserItem> userItems) {
         // Calculate the score based on user-item interactions
         double score = 0.0;
         for (UserItem userItem : userItems) {
